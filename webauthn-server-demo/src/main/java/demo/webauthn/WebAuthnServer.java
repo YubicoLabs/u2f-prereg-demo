@@ -65,6 +65,7 @@ import com.yubico.webauthn.data.COSEAlgorithmIdentifier;
 import com.yubico.webauthn.data.PublicKeyCredentialDescriptor;
 import com.yubico.webauthn.data.RelyingPartyIdentity;
 import com.yubico.webauthn.data.UserIdentity;
+import com.yubico.webauthn.data.exception.HexException;
 import com.yubico.webauthn.exception.AssertionFailedException;
 import com.yubico.webauthn.exception.RegistrationFailedException;
 import com.yubico.webauthn.extension.appid.AppId;
@@ -76,6 +77,7 @@ import demo.webauthn.data.RegistrationRequest;
 import demo.webauthn.data.RegistrationResponse;
 import demo.webauthn.data.U2fRegistrationResponse;
 import demo.webauthn.data.U2fRegistrationResult;
+import demo.webauthn.data.U2fPreregistrationResponse;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.SecureRandom;
@@ -84,6 +86,7 @@ import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -462,6 +465,34 @@ public class WebAuthnServer {
         }
     }
 
+    public Either<List<String>, SuccessfulU2fRegistrationResult> finishPreregistration(String responseJson) {
+        logger.trace("finishPreregistration responseJson: {}", responseJson);
+        U2fPreregistrationResponse response = null;
+        try {
+            response = jsonMapper.readValue(responseJson, U2fPreregistrationResponse.class);
+        } catch (IOException e) {
+            logger.error("JSON error in finishPreregistration; responseJson: {}", responseJson, e);
+            return Either.left(Arrays.asList("Preregistration failed!", "Failed to decode response object.", e.getMessage()));
+        }
+        try {
+            CredentialRegistration registration = addPreregistration(response.getUser(), response.getTsvRow());
+            return Either.right(
+                new SuccessfulU2fRegistrationResult(
+                    null,
+                    null,
+                    registration,
+                    true,
+                    Optional.empty(),
+                    response.getUser().getName(),
+                    sessions.createSession(response.getUser().getId())
+                )
+            );
+        } catch (Exception e) {
+            logger.error("Execution error in finishPreregistration:", e);
+            return Either.left(Arrays.asList("Preregistration failed!", e.getMessage()));
+        }
+    }
+
     public Either<List<String>, AssertionRequestWrapper> startAuthentication(Optional<String> username) {
         logger.trace("startAuthentication username: {}", username);
 
@@ -624,6 +655,67 @@ public class WebAuthnServer {
         } else {
             return Either.left(Collections.singletonList("Username not registered:" + username));
         }
+    }
+
+    private CredentialRegistration addPreregistration(
+        UserIdentity user,
+        String tsvRow
+    ) throws HexException, CertificateException {
+        String[] parts = tsvRow.split("\t");
+        // skip the timestamp/serial no.
+        // timestamp = parts[0], serial = parts[1]
+
+        // read the other parts
+        String appId = parts[2];
+        String challenge = parts[3];
+        String publicPoint = parts[4];
+        String keyHandle = parts[5];
+        String signature = parts[6];
+        String attCert = parts[7];
+
+        // expects a base64 string with a DER certificate
+        final X509Certificate attestationCert = CertificateParser.parseDer(attCert);
+
+        // the key handle uses base64url; the other fields use base64 and hex
+        ByteArray keyHandleBytes =  new ByteArray(Base64.getUrlDecoder().decode(keyHandle));
+
+        // verify the signature
+        boolean successfulVerification = U2fVerifier.verifyPreregistration(
+            ByteArray.fromHex(appId),
+            ByteArray.fromBase64(publicPoint),
+            keyHandleBytes,
+            attestationCert,
+            ByteArray.fromBase64(signature),
+            ByteArray.fromHex(challenge)
+        );
+        if (!successfulVerification) {
+            logger.error("Failed while verifying the signature.");
+            throw new RuntimeException("Failed to verify signature.");
+        }
+
+        // look up the attestation using the metadata service
+        Optional<Attestation> attestation = Optional.empty();
+        try {
+            if (attestationCert != null) {
+                attestation = Optional.of(metadataService.getAttestation(Collections.singletonList(attestationCert)));
+            }
+        } catch (CertificateEncodingException e) {
+            logger.error("Failed to resolve attestation", e);
+        }
+
+        final U2fRegistrationResult result = U2fRegistrationResult.builder()
+            .keyId(PublicKeyCredentialDescriptor.builder().id(keyHandleBytes).build())
+            .attestationTrusted(true) // manual override
+            .publicKeyCose(rawEcdaKeyToCose(ByteArray.fromBase64(publicPoint)))
+            .attestationMetadata(attestation)
+            .build();
+
+        return addRegistration(
+            user,
+            Optional.empty(),
+            0,
+            result
+        );
     }
 
     private CredentialRegistration addRegistration(

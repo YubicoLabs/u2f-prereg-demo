@@ -206,6 +206,19 @@ public class WebAuthnRestResource {
         );
     }
 
+    @Path("preregister/finish")
+    @POST
+    public Response finishPreregistration(@NonNull String responseJson) {
+        logger.trace("finishPreregistration responseJson: {}", responseJson);
+        Either<List<String>, WebAuthnServer.SuccessfulU2fRegistrationResult> result = server.finishPreregistration(responseJson);
+        return finishResponse(
+                result,
+                "Attestation verification failed; further error message(s) were unfortunately lost to an internal server error.",
+                "finishRegistration",
+                responseJson
+        );
+    }
+
     private final class StartAuthenticationResponse {
         public final boolean success = true;
         public final AssertionRequestWrapper request;

@@ -74,4 +74,19 @@ public class U2fVerifier {
         );
     }
 
+    public static boolean verifyPreregistration(ByteArray appIdHash, ByteArray userPublicKey,
+                                                ByteArray keyHandle,
+                                                X509Certificate attestationCertificate,
+                                                ByteArray signature, ByteArray challenge) {
+        return new U2fRawRegisterResponse(
+            userPublicKey,
+            keyHandle,
+            attestationCertificate,
+            signature
+        ).verifySignature(
+            appIdHash,
+            challenge
+        );
+    }
+
 }
