@@ -662,16 +662,19 @@ public class WebAuthnServer {
         String tsvRow
     ) throws HexException, CertificateException {
         String[] parts = tsvRow.split("\t");
-        // skip the timestamp/serial no.
-        // timestamp = parts[0], serial = parts[1]
+        // skip the serial no.
+        // serial = parts[0]
 
         // read the other parts
-        String appId = parts[2];
-        String challenge = parts[3];
-        String publicPoint = parts[4];
-        String keyHandle = parts[5];
-        String signature = parts[6];
-        String attCert = parts[7];
+        String appId = parts[1];
+        String challenge = parts[2];
+        String publicPoint = parts[3];
+        String keyHandle = parts[4];
+        String signature = parts[5];
+        String attCert = parts[6];
+
+        // skip the timestamp.
+        // serial = parts[7]
 
         // expects a base64 string with a DER certificate
         final X509Certificate attestationCert = CertificateParser.parseDer(attCert);

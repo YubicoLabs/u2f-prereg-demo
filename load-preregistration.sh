@@ -5,14 +5,14 @@
 #
 # The expected format of the preregistration data is a .tsv (tab-separated
 # values) file containing in each row:
-#   1. Timestamp - (2018-01-01T12:34:56)
-#   2. Serial # - (decimal)
-#   3. Appid - (hex)
-#   4. Challenge (base64)
-#   5. Public Point (base64)
-#   6. Key Handle (base64)
-#   7. Registration Signature (urlsafebase64)
-#   8. Attestation Certificate (base64)
+#    1. Serial # (decimal)
+#    2. AppId (32 hex encoded bytes)
+#    3. Challenge (base64 encoded - same as client data hash)
+#    4. PublicKey (base64 encoded)
+#    5. KeyHandle (urlsafe base64 encoded)
+#    6. Signature (base64 encoded ANSI X9.62/SEC1 ECDSA P256)
+#    7. Attestation Certificate (base64 encoded X509 DER)
+#    8. Timestamp - (YYYY-MM-DDTHH:mm:ss  - ex: 2018-01-01T12:34:56)
 
 usage ()
 {
